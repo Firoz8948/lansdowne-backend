@@ -118,6 +118,16 @@ async def update_admin_profile(db: AsyncSession, admin_id: int, data: dict) -> d
 async def dashboard_stats(db: AsyncSession) -> dict:
     total_orders = (await db.execute(select(func.count(Order.id)))).scalar() or 0
     total_products = (await db.execute(select(func.count(Product.id)))).scalar() or 0
+    active_products = (
+        await db.execute(
+            select(func.count(Product.id)).where(Product.is_active == True)  # noqa: E712
+        )
+    ).scalar() or 0
+    total_customers = (
+        await db.execute(
+            select(func.count(User.id)).where(User.role == "customer")
+        )
+    ).scalar() or 0
     total_shipped = (
         await db.execute(
             select(func.count(Order.id)).where(Order.order_status == "shipped")
@@ -127,7 +137,7 @@ async def dashboard_stats(db: AsyncSession) -> dict:
     rev_result = await db.execute(
         select(func.sum(Order.total)).where(Order.payment_status == "paid")
     )
-    total_revenue = rev_result.scalar() or 0.0
+    total_revenue = float(rev_result.scalar() or 0.0)
 
     recent_result = await db.execute(
         select(Order)
@@ -152,13 +162,15 @@ async def dashboard_stats(db: AsyncSession) -> dict:
             )
         )
         revenue_trend.append(
-            {"date": start.strftime("%d %b"), "revenue": result.scalar() or 0}
+            {"date": start.strftime("%d %b"), "revenue": float(result.scalar() or 0)}
         )
 
     return {
         "total_orders": total_orders,
         "total_revenue": total_revenue,
         "total_products": total_products,
+        "active_products": active_products,
+        "total_customers": total_customers,
         "total_shipped": total_shipped,
         "recent_orders": recent_orders,
         "revenue_trend": revenue_trend,
@@ -287,10 +299,7 @@ async def duplicate_product(db: AsyncSession, product_id: int) -> dict | None:
         height_cm=getattr(source, "height_cm", None),
         is_featured=False,
         is_active=False,
-        tags=list(source.tags or []),
         metafields=dict(source.metafields or {}),
-        seo_title=getattr(source, "seo_title", None) or "",
-        seo_description=getattr(source, "seo_description", None) or "",
     )
     db.add(clone)
     await db.flush()

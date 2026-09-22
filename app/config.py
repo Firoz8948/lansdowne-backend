@@ -7,17 +7,17 @@ _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "ChaklaDekho"
+    APP_NAME: str = "Lansdowne"
     ENVIRONMENT: str = "development"
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: str = "http://localhost:3000"
-    # Public API base for PayU surl/furl (e.g. https://api.chakladekho.com/api/v1)
+    # Public API base for PayU surl/furl (e.g. https://api.lansdowneleather.com/api/v1)
     API_PUBLIC_URL: str = ""
-    # Comma-separated extra origins (e.g. Vercel preview + custom domain)
+    # Comma-separated extra origins (e.g. preview URL + custom domain)
     CORS_ORIGINS: str = ""
 
     DATABASE_URL: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/chakladekho"
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/lansdowne"
     )
 
     JWT_SECRET_KEY: str = "change-me-in-production"
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
-    ADMIN_EMAIL: str = "admin@chakladkho.com"
+    ADMIN_EMAIL: str = "admin@lansdowneleather.com"
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin"
 

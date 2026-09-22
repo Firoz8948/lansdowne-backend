@@ -57,10 +57,7 @@ class ProductCreateRequest(BaseModel):
     is_featured: bool = False
     is_active: bool = True
     variants: Optional[list[ProductVariant]] = []
-    tags: Optional[list[str]] = []
     metafields: Optional[dict[str, str]] = {}
-    seo_title: Optional[str] = ""
-    seo_description: Optional[str] = ""
 
 
 class ProductUpdateRequest(BaseModel):
@@ -79,10 +76,7 @@ class ProductUpdateRequest(BaseModel):
     is_featured: Optional[bool] = None
     is_active: Optional[bool] = None
     variants: Optional[list[ProductVariant]] = None
-    tags: Optional[list[str]] = None
     metafields: Optional[dict[str, str]] = None
-    seo_title: Optional[str] = None
-    seo_description: Optional[str] = None
 
 
 class ProductResponse(BaseModel):
@@ -100,10 +94,7 @@ class ProductResponse(BaseModel):
     is_featured: bool
     is_active: bool
     variants: Optional[list[ProductVariant]] = []
-    tags: Optional[list[str]] = []
     metafields: Optional[dict[str, str]] = {}
-    seo_title: Optional[str] = ""
-    seo_description: Optional[str] = ""
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -112,6 +103,8 @@ class DashboardStats(BaseModel):
     total_orders: int
     total_revenue: float
     total_products: int
+    active_products: int = 0
+    total_customers: int = 0
     total_shipped: int
     recent_orders: list[Any]
     revenue_trend: list[Any]

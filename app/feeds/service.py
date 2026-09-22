@@ -16,10 +16,10 @@ from app.models import Product
 
 def _site_url() -> str:
     """Canonical storefront URL for feed product links (must match Merchant claimed URL)."""
-    url = (settings.FRONTEND_URL or "https://www.chakladekho.com").rstrip("/")
-    # Prefer www — Merchant Center is claimed as https://www.chakladekho.com
-    if url in {"https://chakladekho.com", "http://chakladekho.com"}:
-        return "https://www.chakladekho.com"
+    url = (settings.FRONTEND_URL or "https://www.lansdowneleather.com").rstrip("/")
+    # Prefer www when apex is used
+    if url in {"https://lansdowneleather.com", "http://lansdowneleather.com"}:
+        return "https://www.lansdowneleather.com"
     return url
 
 
@@ -73,9 +73,9 @@ def product_to_feed_row(product: Product) -> dict:
     extra = [_abs_image(img.url) for img in images[1:5] if img.url]
     availability = "in stock" if (product.stock or 0) > 0 else "out of stock"
     description = _clean_text(product.description) or _clean_text(
-        f"{product.name} — premium iron cookware from {settings.APP_NAME}"
+        f"{product.name} — premium leather from {settings.APP_NAME}"
     )
-    link = f"{_site_url()}/product/{product.slug}"
+    link = f"{_site_url()}/products/{product.slug}"
     row = {
         "id": str(product.id),
         "title": _clean_text(product.name, 150),
@@ -88,8 +88,8 @@ def product_to_feed_row(product: Product) -> dict:
         "image_link": primary,
         "additional_image_link": extra,
         "brand": settings.APP_NAME,
-        "product_type": _clean_text(product.category, 200) or "Cookware",
-        "google_product_category": "Home & Garden > Kitchen & Dining > Cookware",
+        "product_type": _clean_text(product.category, 200) or "Leather Goods",
+        "google_product_category": "Apparel & Accessories > Handbags, Wallets & Cases",
     }
     if product.mrp and product.price and product.mrp > product.price:
         row["price"] = _price(product.mrp)

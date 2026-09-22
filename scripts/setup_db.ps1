@@ -19,7 +19,7 @@ if (-not $env:PGPASSWORD) {
     )
 }
 
-Write-Host "Creating role and database for ChaklaDekho..."
+Write-Host "Creating role and database for Lansdowne..."
 & $Psql -U postgres -h localhost -f "$PSScriptRoot\setup_postgres.sql"
 if ($LASTEXITCODE -ne 0) { throw "SQL setup failed" }
 
@@ -28,4 +28,4 @@ Push-Location $Root
 python "$PSScriptRoot\init_db.py"
 Pop-Location
 
-Write-Host "Done. DATABASE_URL=postgresql+asyncpg://chakladkho:chakladkho@localhost:5432/chakladkho"
+Write-Host "Done. DATABASE_URL=postgresql+asyncpg://lansdowne:lansdowne@localhost:5432/lansdowne"

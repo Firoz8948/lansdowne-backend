@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class ProductVariantOption(BaseModel):
+    id: int | None = None
     name: str
     price: float
     mrp: float
@@ -10,6 +11,7 @@ class ProductVariantOption(BaseModel):
 
 
 class ProductVariant(BaseModel):
+    id: int | None = None
     name: str
     options: list[ProductVariantOption]
 
@@ -30,10 +32,7 @@ class ProductBase(BaseModel):
     is_featured: bool = False
     is_active: bool = True
     variants: list[ProductVariant] = []
-    tags: list[str] = []
     metafields: dict[str, str] = {}
-    seo_title: str | None = ""
-    seo_description: str | None = ""
 
 
 class ProductCreate(ProductBase):
@@ -56,10 +55,7 @@ class ProductUpdate(BaseModel):
     is_featured: bool | None = None
     is_active: bool | None = None
     variants: list[ProductVariant] | None = None
-    tags: list[str] | None = None
     metafields: dict[str, str] | None = None
-    seo_title: str | None = None
-    seo_description: str | None = None
 
 
 class ProductResponse(ProductBase):

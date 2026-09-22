@@ -36,10 +36,7 @@ def serialize_product(product, include_relations=True) -> dict:
         "height_cm": getattr(product, "height_cm", None),
         "is_featured": product.is_featured,
         "is_active": product.is_active,
-        "tags": product.tags or [],
         "metafields": product.metafields or {},
-        "seo_title": getattr(product, "seo_title", None) or "",
-        "seo_description": getattr(product, "seo_description", None) or "",
         "created_at": product.created_at.isoformat() if product.created_at else None,
         "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }

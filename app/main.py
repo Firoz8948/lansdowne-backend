@@ -71,7 +71,7 @@ app.include_router(meta_router, prefix=f"{prefix}/meta", tags=["Meta"])
 
 @app.get("/")
 async def root():
-    return {"message": "ChaklaDekho API", "docs": "/docs"}
+    return {"message": "Lansdowne API", "docs": "/docs"}
 
 
 @app.get("/health")

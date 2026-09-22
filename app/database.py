@@ -438,7 +438,7 @@ async def ensure_reels_category():
 
 
 async def seed_default_categories():
-    """Seed default cookware categories and map existing products."""
+    """Seed default leather categories and map existing products."""
     import re
 
     from sqlalchemy import select, update
@@ -452,12 +452,11 @@ async def seed_default_categories():
         return s
 
     defaults = [
-        {"name": "Chakla", "position": 0},
-        {"name": "Tawa", "position": 1},
-        {"name": "Belan / Rolling Pin", "position": 2},
-        {"name": "Serving Spoon", "position": 3},
-        {"name": "Spatula", "position": 4},
-        {"name": "Mortar and Pestle", "position": 5},
+        {"name": "Belts", "position": 0},
+        {"name": "Wallets", "position": 1},
+        {"name": "Bags", "position": 2},
+        {"name": "Accessories", "position": 3},
+        {"name": "Card Holders", "position": 4},
     ]
 
     async with AsyncSessionLocal() as session:

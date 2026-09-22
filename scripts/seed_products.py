@@ -12,82 +12,69 @@ from sqlalchemy import select
 
 PRODUCTS_DATA = [
     {
-        "name": "Wooden Chakla (12 inch)",
-        "description": "Smooth wooden chakla for rolling rotis, parathas, and puris. Stable base and even surface for everyday kitchen use.",
-        "price": 449.0,
-        "mrp": 699.0,
-        "category_name": "Chakla",
+        "name": "Premium Black Textured Leather Belt",
+        "description": "Upgrade your everyday style with this premium black leather belt, featuring a textured finish, durable construction, and a sleek metal buckle.",
+        "price": 699.0,
+        "mrp": 1199.0,
+        "category_name": "Belts",
         "stock": 80,
         "unit": "piece",
-        "weight": 1.2,
+        "weight": 0.25,
         "is_featured": True,
-        "tags": ["chakla", "wooden", "roti", "kitchen"],
-        "image_url": "/uploads/products/wooden_chakla.webp",
+        "tags": ["belt", "leather", "black", "formal"],
+        "image_url": "/uploads/products/black_leather_belt.webp",
     },
     {
-        "name": "Iron Roti Tawa (10 inch)",
-        "description": "Traditional iron tawa for soft rotis and crisp parathas. Even heat distribution for daily cooking.",
-        "price": 549.0,
-        "mrp": 849.0,
-        "category_name": "Tawa",
+        "name": "Classic Brown Leather Wallet",
+        "description": "Handcrafted brown leather bifold wallet with multiple card slots and a secure cash compartment. Built for daily carry.",
+        "price": 899.0,
+        "mrp": 1499.0,
+        "category_name": "Wallets",
         "stock": 70,
         "unit": "piece",
-        "weight": 1.6,
+        "weight": 0.15,
         "is_featured": True,
-        "tags": ["tawa", "roti", "iron", "kitchen"],
-        "image_url": "/uploads/products/iron_roti_tawa.webp",
+        "tags": ["wallet", "leather", "brown", "bifold"],
+        "image_url": "/uploads/products/brown_leather_wallet.webp",
     },
     {
-        "name": "Wooden Belan / Rolling Pin",
-        "description": "Handcrafted wooden belan with a comfortable grip. Ideal for rolling dough evenly on a chakla.",
-        "price": 199.0,
-        "mrp": 349.0,
-        "category_name": "Belan / Rolling Pin",
+        "name": "Minimal Leather Card Holder",
+        "description": "Slim leather card holder designed for essential cards only. Clean edges and a soft hand-feel.",
+        "price": 449.0,
+        "mrp": 799.0,
+        "category_name": "Card Holders",
         "stock": 120,
         "unit": "piece",
-        "weight": 0.4,
+        "weight": 0.08,
         "is_featured": True,
-        "tags": ["belan", "rolling pin", "wooden", "kitchen"],
-        "image_url": "/uploads/products/wooden_belan.webp",
+        "tags": ["card holder", "leather", "minimal", "slim"],
+        "image_url": "/uploads/products/leather_card_holder.webp",
     },
     {
-        "name": "Serving Spoon Set (3 pcs)",
-        "description": "Set of 3 durable serving spoons for dal, sabzi, and rice. Comfortable handles for everyday serving.",
+        "name": "Everyday Leather Crossbody Bag",
+        "description": "Compact leather crossbody bag with an adjustable strap and secure zip closure. Ideal for travel and daily errands.",
+        "price": 2499.0,
+        "mrp": 3999.0,
+        "category_name": "Bags",
+        "stock": 40,
+        "unit": "piece",
+        "weight": 0.6,
+        "is_featured": True,
+        "tags": ["bag", "leather", "crossbody", "travel"],
+        "image_url": "/uploads/products/leather_crossbody.webp",
+    },
+    {
+        "name": "Leather Key Fob",
+        "description": "Premium leather key fob with solid hardware. A small accessory with lasting craftsmanship.",
         "price": 299.0,
         "mrp": 499.0,
-        "category_name": "Serving Spoon",
-        "stock": 100,
-        "unit": "set",
-        "weight": 0.5,
-        "is_featured": True,
-        "tags": ["serving spoon", "kitchen", "utensils"],
-        "image_url": "/uploads/products/serving_spoons.webp",
-    },
-    {
-        "name": "Wooden Spatula Set (4 pcs)",
-        "description": "Eco-friendly wooden spatulas for flipping, stirring, and sautéing. Gentle on cookware surfaces.",
-        "price": 349.0,
-        "mrp": 549.0,
-        "category_name": "Spatula",
-        "stock": 90,
-        "unit": "set",
-        "weight": 0.45,
-        "is_featured": True,
-        "tags": ["spatula", "wooden", "kitchen"],
-        "image_url": "/uploads/products/wooden_spatulas.webp",
-    },
-    {
-        "name": "Stone Mortar and Pestle",
-        "description": "Classic mortar and pestle for grinding spices, chutneys, and pastes the traditional way.",
-        "price": 599.0,
-        "mrp": 899.0,
-        "category_name": "Mortar and Pestle",
-        "stock": 50,
-        "unit": "set",
-        "weight": 2.5,
-        "is_featured": True,
-        "tags": ["mortar", "pestle", "spices", "kitchen"],
-        "image_url": "/uploads/products/mortar_pestle.webp",
+        "category_name": "Accessories",
+        "stock": 150,
+        "unit": "piece",
+        "weight": 0.05,
+        "is_featured": False,
+        "tags": ["key fob", "leather", "accessory"],
+        "image_url": "/uploads/products/leather_key_fob.webp",
     },
 ]
 
@@ -99,70 +86,56 @@ def slugify(name: str) -> str:
 
 async def seed_products():
     async with AsyncSessionLocal() as session:
-        # First, ensure all categories exist
-        category_names = set(p["category_name"] for p in PRODUCTS_DATA)
-        for cat_name in category_names:
-            cat_slug = slugify(cat_name)
-            existing_cat = (
-                await session.execute(select(Category).where(Category.slug == cat_slug))
-            ).scalar_one_or_none()
-            if not existing_cat:
-                new_cat = Category(
-                    name=cat_name,
-                    slug=cat_slug,
+        for data in PRODUCTS_DATA:
+            cat_result = await session.execute(
+                select(Category).where(Category.name == data["category_name"])
+            )
+            category = cat_result.scalar_one_or_none()
+            if not category:
+                category = Category(
+                    name=data["category_name"],
+                    slug=slugify(data["category_name"]),
                     is_active=True,
-                    position=10 # general position
                 )
-                session.add(new_cat)
-                print(f"Created category: {cat_name}")
-        
-        await session.commit()
-        
-        # Load categories into a mapping dict by slug
-        cat_result = await session.execute(select(Category))
-        categories = {c.slug: c for c in cat_result.scalars().all()}
-        
-        # Clear existing products to avoid duplicates in seeding
-        # This makes it easy to run the script multiple times
-        existing_products = (await session.execute(select(Product))).scalars().all()
-        for ep in existing_products:
-            await session.delete(ep)
-        await session.commit()
-        print("Cleared old products.")
+                session.add(category)
+                await session.flush()
 
-        # Seed products
-        for p_data in PRODUCTS_DATA:
-            cat = categories[slugify(p_data["category_name"])]
+            existing = await session.execute(
+                select(Product).where(Product.slug == slugify(data["name"]))
+            )
+            if existing.scalar_one_or_none():
+                continue
+
             product = Product(
-                name=p_data["name"],
-                slug=slugify(p_data["name"]),
-                description=p_data["description"],
-                price=p_data["price"],
-                mrp=p_data["mrp"],
-                category_id=cat.id,
-                category=cat.name,
-                stock=p_data["stock"],
-                unit=p_data["unit"],
-                weight=p_data["weight"],
-                is_featured=p_data["is_featured"],
+                name=data["name"],
+                slug=slugify(data["name"]),
+                description=data["description"],
+                price=data["price"],
+                mrp=data["mrp"],
+                category=data["category_name"],
+                category_id=category.id,
+                stock=data["stock"],
+                unit=data["unit"],
+                weight=data["weight"],
+                is_featured=data["is_featured"],
                 is_active=True,
-                tags=p_data["tags"],
-                metafields={}
+                tags=data["tags"],
             )
             session.add(product)
-            await session.flush() # flush to get product.id
+            await session.flush()
 
-            # Add product image
-            product_image = ProductImage(
-                product_id=product.id,
-                url=p_data["image_url"],
-                position=0
-            )
-            session.add(product_image)
-            print(f"Seeded product: {product.name}")
-        
+            if data.get("image_url"):
+                session.add(
+                    ProductImage(
+                        product_id=product.id,
+                        url=data["image_url"],
+                        position=0,
+                    )
+                )
+
         await session.commit()
-        print("All products seeded successfully!")
+        print("Lansdowne sample products seeded")
+
 
 if __name__ == "__main__":
     asyncio.run(seed_products())
