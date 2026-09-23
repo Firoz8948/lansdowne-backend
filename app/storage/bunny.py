@@ -8,6 +8,7 @@ from app.storage.base import (
     build_key,
     validate_ext,
 )
+from app.storage.optimize import optimize_image_bytes
 
 __all__ = [
     "ALLOWED_IMAGE_EXT",
@@ -47,6 +48,20 @@ def is_configured() -> bool:
     )
 
 
+def _should_optimize(ext: str, allowed_ext: set[str]) -> bool:
+    if allowed_ext & ALLOWED_VIDEO_EXT and ext in ALLOWED_VIDEO_EXT:
+        return False
+    return ext in ALLOWED_IMAGE_EXT or ext in {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".bmp",
+        ".tif",
+        ".tiff",
+    }
+
+
 async def upload_file(
     file: UploadFile,
     folder: str,
@@ -66,15 +81,20 @@ async def upload_file(
         )
 
     ext = validate_ext(file.filename, allowed_ext, default_ext)
-    key = build_key(folder, ext)
     content = await file.read()
+    content_type = file.content_type or "application/octet-stream"
 
+    if _should_optimize(ext, allowed_ext):
+        content, ext, content_type = optimize_image_bytes(content, source_ext=ext)
+
+    key = build_key(folder, ext)
     host = _storage_host(settings.BUNNY_STORAGE_REGION)
     upload_url = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{key}"
 
-    headers = {"AccessKey": settings.BUNNY_STORAGE_API_KEY}
-    if file.content_type:
-        headers["Content-Type"] = file.content_type
+    headers = {
+        "AccessKey": settings.BUNNY_STORAGE_API_KEY,
+        "Content-Type": content_type,
+    }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:

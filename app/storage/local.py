@@ -3,7 +3,8 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from app.config import get_settings
-from app.storage.base import ALLOWED_IMAGE_EXT, build_key, validate_ext
+from app.storage.base import ALLOWED_IMAGE_EXT, ALLOWED_VIDEO_EXT, build_key, validate_ext
+from app.storage.optimize import optimize_image_bytes
 
 URL_PREFIX = "/uploads"
 
@@ -21,6 +22,21 @@ def _configured_dir() -> Path:
 UPLOADS_DIR = _configured_dir()
 
 
+def _should_optimize(ext: str, allowed_ext: set[str]) -> bool:
+    """Optimize raster images only — never videos."""
+    if allowed_ext & ALLOWED_VIDEO_EXT and ext in ALLOWED_VIDEO_EXT:
+        return False
+    return ext in ALLOWED_IMAGE_EXT or ext in {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".bmp",
+        ".tif",
+        ".tiff",
+    }
+
+
 async def upload_file(
     file: UploadFile,
     folder: str,
@@ -29,11 +45,15 @@ async def upload_file(
     default_ext: str = ".jpg",
 ) -> str:
     ext = validate_ext(file.filename, allowed_ext, default_ext)
-    key = build_key(folder, ext)
+    content = await file.read()
 
+    if _should_optimize(ext, allowed_ext):
+        content, ext, _ = optimize_image_bytes(content, source_ext=ext)
+
+    key = build_key(folder, ext)
     destination = UPLOADS_DIR / key
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(await file.read())
+    destination.write_bytes(content)
 
     return f"{URL_PREFIX}/{key}"
 
