@@ -3,6 +3,7 @@ name: Deploy backend to EC2
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: deploy-backend
@@ -19,9 +20,12 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          # GitHub runners are not on your home IP — SG must allow 22 from 0.0.0.0/0 (or a tunnel)
+          timeout: 60s
+          command_timeout: 30m
           script_stop: true
           script: |
-            set -e
+            set -euo pipefail
             cd /opt/lansdowne/backend
             git fetch origin main
             git reset --hard origin/main
