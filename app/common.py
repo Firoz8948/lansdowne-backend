@@ -146,14 +146,20 @@ def serialize_payment(payment) -> dict:
 
 
 def serialize_admin(admin) -> dict:
+    from app.config import settings
+
     return {
         "id": str(admin.id),
         "email": admin.email,
         "name": admin.name,
-        "phone": getattr(admin, "phone", None) or "",
-        "company_name": getattr(admin, "company_name", None) or "",
+        # Locked brand settings (env) — always surface these for Admin → Settings
+        "phone": (settings.ADMIN_NOTIFY_PHONE or getattr(admin, "phone", None) or ""),
+        "company_name": (settings.BRAND_NAME or getattr(admin, "company_name", None) or ""),
+        "notify_email": (settings.ADMIN_NOTIFY_EMAIL or ""),
+        "brand_name": (settings.BRAND_NAME or ""),
         "role": admin.role,
         "is_active": admin.is_active,
+        "settings_locked": True,
     }
 
 

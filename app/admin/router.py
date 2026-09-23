@@ -40,6 +40,21 @@ async def get_me(
     return profile
 
 
+@router.get("/settings")
+async def get_brand_settings(_=Depends(get_current_admin)):
+    """Locked brand / notification settings (env-managed, read-only)."""
+    from app.config import settings
+
+    return {
+        "brand_name": settings.BRAND_NAME or "Lansdowne Leather",
+        "phone": settings.ADMIN_NOTIFY_PHONE or "8979543500",
+        "email": settings.ADMIN_NOTIFY_EMAIL or "lansdowneleather1@gmail.com",
+        "locked": True,
+        "otp_enabled": bool(settings.RENFLAIR_API_KEY) and not settings.OTP_DEBUG,
+        "order_sms_enabled": bool(settings.RENFLAIR_API_KEY),
+    }
+
+
 @router.put("/me/profile")
 async def update_me_profile(
     body: AdminProfileUpdateRequest,

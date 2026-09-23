@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@lansdowneleather.com"
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin"
+    # Locked storefront / notification identity (shown in Admin → Settings)
+    BRAND_NAME: str = "Lansdowne Leather"
+    ADMIN_NOTIFY_PHONE: str = "8979543500"
+    ADMIN_NOTIFY_EMAIL: str = "lansdowneleather1@gmail.com"
 
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""

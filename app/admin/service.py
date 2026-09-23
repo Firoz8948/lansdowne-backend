@@ -77,37 +77,20 @@ async def update_admin_profile(db: AsyncSession, admin_id: int, data: dict) -> d
     if not admin:
         raise HTTPException(status_code=404, detail="Admin not found")
 
-    email = (data.get("email") or "").strip().lower()
-    if email:
-        if "@" not in email:
-            raise HTTPException(status_code=400, detail="Enter a valid email")
-        existing = await db.execute(
-            select(Admin).where(Admin.email == email, Admin.id != admin_id)
+    # Brand name, notify phone, and notify email are locked (env-managed).
+    locked = {"phone", "company_name", "notify_email", "brand_name", "email"}
+    attempted = locked.intersection(data.keys())
+    if attempted:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Brand name, mobile number, and email are locked. "
+                "Update ADMIN_NOTIFY_* / BRAND_NAME in server .env if needed."
+            ),
         )
-        if existing.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Email already in use")
-        admin.email = email
 
     if "name" in data and data["name"] is not None:
         admin.name = str(data["name"]).strip() or admin.name
-
-    if "company_name" in data and data["company_name"] is not None:
-        admin.company_name = str(data["company_name"]).strip() or None
-
-    if "phone" in data and data["phone"] is not None:
-        raw = str(data["phone"]).strip()
-        if not raw:
-            admin.phone = None
-        else:
-            digits = re.sub(r"\D", "", raw)
-            if digits.startswith("91") and len(digits) == 12:
-                digits = digits[2:]
-            if len(digits) != 10:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Enter a valid 10-digit mobile number",
-                )
-            admin.phone = digits
 
     admin.updated_at = utcnow()
     await db.commit()

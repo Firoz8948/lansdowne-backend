@@ -382,12 +382,16 @@ async def seed_admin():
         hashed = bcrypt.hashpw(
             settings.ADMIN_PASSWORD.encode(), bcrypt.gensalt()
         ).decode()
+        notify_phone = (settings.ADMIN_NOTIFY_PHONE or "").strip() or None
+        brand_name = (settings.BRAND_NAME or "").strip() or None
         if not existing:
             session.add(
                 Admin(
                     email=settings.ADMIN_EMAIL,
                     password=hashed,
                     name=settings.ADMIN_USERNAME,
+                    phone=notify_phone,
+                    company_name=brand_name,
                     role="admin",
                     is_active=True,
                 )
@@ -396,6 +400,11 @@ async def seed_admin():
         else:
             existing.password = hashed
             existing.name = settings.ADMIN_USERNAME
+            # Keep locked brand notify fields in sync with env
+            if notify_phone:
+                existing.phone = notify_phone
+            if brand_name:
+                existing.company_name = brand_name
             print(f"Admin password synced: {settings.ADMIN_USERNAME}")
         await session.commit()
 
