@@ -14,6 +14,11 @@ async def verify_otp_for_phone(
     phone: str,
     otp_code: str,
 ) -> Tuple[bool, str]:
+    """Validate OTP without consuming it.
+
+    Callers must invoke ``consume_otps_for_phone`` only after login/signup
+    succeeds, so failed account checks do not burn the OTP.
+    """
     normalized = normalize_phone(phone)
 
     result = await db.execute(
@@ -42,17 +47,19 @@ async def verify_otp_for_phone(
     if otp_record.otp != otp_code.strip():
         return False, "Invalid OTP. Please try again."
 
-    otp_record.verified = True
-    await db.commit()
     return True, "OTP verified successfully"
 
 
-async def delete_verified_otps(db: AsyncSession, phone: str) -> None:
+async def consume_otps_for_phone(db: AsyncSession, phone: str) -> None:
+    """Delete all OTPs for a phone after successful login/signup."""
     normalized = normalize_phone(phone)
-    await db.execute(
-        delete(OTP).where(OTP.phone == normalized, OTP.verified == True)  # noqa: E712
-    )
+    await db.execute(delete(OTP).where(OTP.phone == normalized))
     await db.commit()
+
+
+async def delete_verified_otps(db: AsyncSession, phone: str) -> None:
+    """Backward-compatible alias — clears all OTPs for the phone."""
+    await consume_otps_for_phone(db, phone)
 
 
 async def get_otp_status(db: AsyncSession, phone: str) -> Optional[dict]:

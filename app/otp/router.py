@@ -64,10 +64,11 @@ async def verify_otp(
     if not success:
         raise HTTPException(status_code=400, detail=message)
 
-    if mode == "signup":
-        existing = await auth_service.get_user_by_phone(db, phone)
-        if existing:
-            raise HTTPException(status_code=400, detail="ACCOUNT_EXISTS")
+    existing = await auth_service.get_user_by_phone(db, phone)
+    if mode == "signup" and existing:
+        raise HTTPException(status_code=400, detail="ACCOUNT_EXISTS")
+    if mode == "signin" and not existing:
+        raise HTTPException(status_code=404, detail="ACCOUNT_NOT_FOUND")
 
     user = await auth_service.get_or_create_user_by_phone(
         db,
@@ -75,7 +76,7 @@ async def verify_otp(
         name,
         allow_create=(mode == "signup"),
     )
-    await verify_otp_service.delete_verified_otps(db, phone)
+    await verify_otp_service.consume_otps_for_phone(db, phone)
 
     token_data = {
         "sub": str(user["id"]),

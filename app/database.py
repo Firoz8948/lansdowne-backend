@@ -140,6 +140,9 @@ async def connect_db():
             text("ALTER TABLE users ADD COLUMN IF NOT EXISTS address_pincode VARCHAR(10)")
         )
         await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE")
+        )
+        await conn.execute(
             text(
                 "ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_landmark VARCHAR(255)"
             )

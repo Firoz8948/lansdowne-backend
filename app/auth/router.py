@@ -31,6 +31,8 @@ async def update_profile(
         user_id=current_user["id"],
         name=body.name,
         phone=body.phone,
+        email=body.email,
+        date_of_birth=body.date_of_birth,
         address_line1=body.address_line1,
         address_line2=body.address_line2,
         address_landmark=body.address_landmark,

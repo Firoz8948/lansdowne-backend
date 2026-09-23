@@ -164,11 +164,13 @@ def serialize_admin(admin) -> dict:
 
 
 def serialize_user(user) -> dict:
+    dob = getattr(user, "date_of_birth", None)
     return {
         "id": str(user.id),
         "email": user.email,
         "phone": user.phone,
         "name": user.name,
+        "date_of_birth": dob.isoformat() if dob else None,
         "address_line1": getattr(user, "address_line1", None) or "",
         "address_line2": getattr(user, "address_line2", None) or "",
         "address_landmark": getattr(user, "address_landmark", None) or "",

@@ -106,6 +106,8 @@ async def update_user_profile(
     user_id: int | str,
     name: str | None = None,
     phone: str | None = None,
+    email: str | None = None,
+    date_of_birth: str | None = None,
     address_line1: str | None = None,
     address_line2: str | None = None,
     address_landmark: str | None = None,
@@ -113,6 +115,8 @@ async def update_user_profile(
     address_state: str | None = None,
     address_pincode: str | None = None,
 ) -> Optional[dict]:
+    from datetime import date as date_cls
+
     result = await db.execute(select(User).where(User.id == int(user_id)))
     user = result.scalar_one_or_none()
     if not user:
@@ -122,6 +126,16 @@ async def update_user_profile(
         user.name = name.strip() or None
     if phone is not None:
         user.phone = phone
+    if email is not None:
+        cleaned = email.strip().lower()
+        if cleaned and "@mobile." in cleaned:
+            cleaned = ""
+        user.email = cleaned or None
+    if date_of_birth is not None:
+        if date_of_birth == "":
+            user.date_of_birth = None
+        else:
+            user.date_of_birth = date_cls.fromisoformat(date_of_birth[:10])
     if address_line1 is not None:
         user.address_line1 = address_line1.strip() or None
     if address_line2 is not None:

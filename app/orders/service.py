@@ -9,6 +9,7 @@ from app.common import serialize_order, utcnow
 from app.database import AsyncSessionLocal
 from app.models import Order, OrderItem
 from app.orders.notifications import notify_order_placed
+from app.auth import service as auth_service
 
 from .models import ORDER_STATUSES, calc_subtotal, generate_order_id, normalize_items, total_cart_weight_grams
 
@@ -130,6 +131,23 @@ async def create_customer_order(
 
         await db.commit()
         await db.refresh(order, ["items"])
+
+        if user_id:
+            try:
+                await auth_service.update_user_profile(
+                    db,
+                    user_id=user_id,
+                    name=customer.get("name"),
+                    email=customer.get("email"),
+                    address_line1=address.get("line1"),
+                    address_line2=address.get("line2") or "",
+                    address_landmark=address.get("landmark") or "",
+                    address_city=address.get("city"),
+                    address_state=address.get("state"),
+                    address_pincode=address.get("pincode"),
+                )
+            except Exception as exc:
+                logger.warning("Failed to sync profile address from order: %s", exc)
 
         try:
             await notify_order_placed(

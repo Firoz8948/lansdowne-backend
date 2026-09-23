@@ -78,6 +78,7 @@ class User(Base):
     address_city: Mapped[Optional[str]] = mapped_column(String(100))
     address_state: Mapped[Optional[str]] = mapped_column(String(100))
     address_pincode: Mapped[Optional[str]] = mapped_column(String(10))
+    date_of_birth: Mapped[Optional[date]] = mapped_column(Date)
     role: Mapped[str] = mapped_column(String(50), default="customer")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
