@@ -18,6 +18,24 @@ async def send_otp(
     body: SendOTPRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    mode = (body.mode or "signin").strip().lower()
+    phone = normalize_phone(body.phone)
+
+    if mode == "signup" and not (body.name or "").strip():
+        raise HTTPException(status_code=400, detail="Please enter your name to sign up.")
+
+    existing = await auth_service.get_user_by_phone(db, phone)
+    if mode == "signin" and not existing:
+        raise HTTPException(
+            status_code=404,
+            detail="ACCOUNT_NOT_FOUND",
+        )
+    if mode == "signup" and existing:
+        raise HTTPException(
+            status_code=400,
+            detail="ACCOUNT_EXISTS",
+        )
+
     return await send_otp_service.send_otp_to_phone(db, body.phone, body.name or "")
 
 
@@ -28,6 +46,8 @@ async def verify_otp(
 ):
     phone = normalize_phone(body.phone)
     otp_code = body.otp.strip()
+    mode = (body.mode or "signin").strip().lower()
+    name = (body.name or "").strip()
 
     if len(otp_code) != settings.OTP_LENGTH or not otp_code.isdigit():
         raise HTTPException(
@@ -35,14 +55,25 @@ async def verify_otp(
             detail=f"OTP must be {settings.OTP_LENGTH} digits.",
         )
 
+    if mode == "signup" and not name:
+        raise HTTPException(status_code=400, detail="Please enter your name to sign up.")
+
     success, message = await verify_otp_service.verify_otp_for_phone(
         db, phone, otp_code
     )
     if not success:
         raise HTTPException(status_code=400, detail=message)
 
+    if mode == "signup":
+        existing = await auth_service.get_user_by_phone(db, phone)
+        if existing:
+            raise HTTPException(status_code=400, detail="ACCOUNT_EXISTS")
+
     user = await auth_service.get_or_create_user_by_phone(
-        db, phone, body.name or ""
+        db,
+        phone,
+        name,
+        allow_create=(mode == "signup"),
     )
     await verify_otp_service.delete_verified_otps(db, phone)
 

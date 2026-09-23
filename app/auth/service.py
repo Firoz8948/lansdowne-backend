@@ -29,11 +29,18 @@ async def get_or_create_user_by_phone(
     db: AsyncSession,
     phone: str,
     name: str = "",
+    *,
+    allow_create: bool = True,
 ) -> dict:
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
 
     if not user:
+        if not allow_create:
+            raise HTTPException(
+                status_code=404,
+                detail="ACCOUNT_NOT_FOUND",
+            )
         derived_name = name.strip() or f"Customer {phone[-4:]}"
         user = User(
             phone=phone,
@@ -45,7 +52,7 @@ async def get_or_create_user_by_phone(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    elif name.strip() and not user.name:
+    elif name.strip() and (not user.name or user.name.startswith("Customer ")):
         user.name = name.strip()
         await db.commit()
         await db.refresh(user)

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class SendOTPRequest(BaseModel):
     phone: str
     name: Optional[str] = ""
+    mode: Optional[str] = "signin"  # signin | signup
 
 
 class SendOTPResponse(BaseModel):
@@ -19,6 +20,7 @@ class VerifyOTPRequest(BaseModel):
     phone: str
     otp: str
     name: Optional[str] = ""
+    mode: Optional[str] = "signin"  # signin | signup
 
 
 class VerifyOTPResponse(BaseModel):
