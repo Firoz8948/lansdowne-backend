@@ -47,10 +47,18 @@ async def send_otp_to_phone(db: AsyncSession, phone: str, name: str = "") -> dic
         except Exception as exc:
             await db.execute(delete(OTP).where(OTP.phone == normalized))
             await db.commit()
-            raise HTTPException(
-                status_code=502,
-                detail="Failed to send OTP. Please try again.",
-            ) from exc
+            detail = str(exc).strip() or "Failed to send OTP. Please try again."
+            # Map provider messages to clearer API errors
+            upper = detail.upper()
+            if "INCORRECT API KEY" in upper or "INVALID API KEY" in upper:
+                detail = "SMS service misconfigured. Please contact support."
+            elif "INSUFFICIENT" in upper or "BALANCE" in upper:
+                detail = "SMS credits exhausted. Please contact support."
+            elif "not configured" in detail.lower():
+                detail = "SMS service is not configured."
+            else:
+                detail = "Failed to send OTP. Please try again."
+            raise HTTPException(status_code=502, detail=detail) from exc
 
     response = {
         "message": "OTP sent to your mobile number.",

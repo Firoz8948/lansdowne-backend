@@ -4,6 +4,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import settings
+from app.sms.renflair import renflair_failure_message
 
 logger = logging.getLogger("sms")
 
@@ -37,6 +38,11 @@ async def send_otp_sms(phone: str, otp: str) -> dict:
         data = resp.json()
     except Exception:
         data = {"raw": resp.text}
+
+    fail_msg = renflair_failure_message(data)
+    if fail_msg:
+        logger.error("Renflair OTP SMS rejected: %s | body=%s", fail_msg, data)
+        raise RuntimeError(fail_msg)
 
     logger.info("OTP SMS sent to %s", phone[-4:].rjust(10, "*"))
     return data

@@ -4,6 +4,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import settings
+from app.sms.renflair import renflair_failure_message
 
 logger = logging.getLogger("sms")
 
@@ -48,6 +49,13 @@ async def send_admin_new_order_sms(phone: str, order_id: str) -> dict:
             data = resp.json()
         except Exception:
             data = {"raw": resp.text}
+
+        fail_msg = renflair_failure_message(data)
+        if fail_msg:
+            logger.error(
+                "Renflair admin order SMS rejected: %s | body=%s", fail_msg, data
+            )
+            return {"success": False, "error": fail_msg, "data": data}
 
         logger.info(
             "Admin new-order SMS sent for %s to %s",
