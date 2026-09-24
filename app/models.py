@@ -4,6 +4,7 @@ import enum
 
 from sqlalchemy import (
     Boolean,
+    Column,
     Date,
     DateTime,
     Float,
@@ -11,12 +12,31 @@ from sqlalchemy import (
     Integer,
     JSON,
     String,
+    Table,
     Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+
+
+product_categories = Table(
+    "product_categories",
+    Base.metadata,
+    Column(
+        "product_id",
+        Integer,
+        ForeignKey("products.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        Integer,
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class OrderStatus(str, enum.Enum):
@@ -119,6 +139,11 @@ class Category(Base):
         back_populates="category_rel",
         foreign_keys="Product.category_id",
     )
+    products_m2m: Mapped[list["Product"]] = relationship(
+        "Product",
+        secondary=product_categories,
+        back_populates="categories_m2m",
+    )
 
 
 class Product(Base):
@@ -144,6 +169,9 @@ class Product(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     metafields: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    # [{ "name": "Brown", "hex": "#5c3d2e" }, ...] — 1 solid, 2+ multicolor
+    colors: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    color_group_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     seo_title: Mapped[Optional[str]] = mapped_column(String(200))
     seo_description: Mapped[Optional[str]] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(
@@ -155,6 +183,11 @@ class Product(Base):
 
     category_rel: Mapped[Optional["Category"]] = relationship(
         "Category", back_populates="products", foreign_keys=[category_id]
+    )
+    categories_m2m: Mapped[list["Category"]] = relationship(
+        "Category",
+        secondary=product_categories,
+        back_populates="products_m2m",
     )
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",
@@ -211,6 +244,12 @@ class ProductVariantOption(Base):
     mrp: Mapped[float] = mapped_column(Float, nullable=False)
     stock: Mapped[int] = mapped_column(Integer, default=0)
     weight: Mapped[Optional[float]] = mapped_column(Float)
+    hex: Mapped[Optional[str]] = mapped_column(String(7))
+    # Multiple hexes for multicolor option swatches, e.g. ["#ff0","#f00"]
+    colors: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # Gallery for this option (e.g. Black color photos). First entry mirrors image_url.
+    images: Mapped[Optional[list]] = mapped_column(JSON, default=list)
 
     variant: Mapped["ProductVariant"] = relationship(
         "ProductVariant", back_populates="options"

@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.common import serialize_shipment, utcnow
+from app.common import format_variant_info_label, serialize_shipment, utcnow
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Order, Shipment
@@ -189,7 +189,13 @@ def _build_adhoc_payload(order: Order, weight_kg: float) -> dict:
         "shipping_is_billing": True,
         "order_items": [
             {
-                "name": (i.name or "Item")[:200],
+                "name": (
+                    (
+                        f"{i.name} ({format_variant_info_label(i.variant_info)})"
+                        if format_variant_info_label(i.variant_info)
+                        else (i.name or "Item")
+                    )
+                )[:200],
                 "sku": str(i.product_id or i.id),
                 "units": int(i.quantity),
                 "selling_price": float(i.price),

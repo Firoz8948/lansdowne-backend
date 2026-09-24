@@ -34,11 +34,20 @@ class ProductVariantOption(BaseModel):
     mrp: float
     stock: int
     weight: Optional[float] = None
+    hex: Optional[str] = None
+    colors: Optional[list[dict[str, str]]] = None
+    image_url: Optional[str] = None
+    images: Optional[list[str]] = None
 
 
 class ProductVariant(BaseModel):
     name: str
     options: list[ProductVariantOption]
+
+
+class ProductColorSwatch(BaseModel):
+    name: str = ""
+    hex: str
 
 
 class ProductCreateRequest(BaseModel):
@@ -48,6 +57,7 @@ class ProductCreateRequest(BaseModel):
     mrp: float
     category: str = ""
     category_id: Optional[int] = None
+    category_ids: Optional[list[int]] = None
     stock: int = 0
     unit: Optional[str] = "grams"
     weight: Optional[float] = None
@@ -58,6 +68,9 @@ class ProductCreateRequest(BaseModel):
     is_active: bool = True
     variants: Optional[list[ProductVariant]] = []
     metafields: Optional[dict[str, str]] = {}
+    colors: Optional[list[ProductColorSwatch]] = None
+    color_group_id: Optional[str] = None
+    color_sibling_ids: Optional[list[int]] = None
 
 
 class ProductUpdateRequest(BaseModel):
@@ -67,6 +80,7 @@ class ProductUpdateRequest(BaseModel):
     mrp: Optional[float] = None
     category: Optional[str] = None
     category_id: Optional[int] = None
+    category_ids: Optional[list[int]] = None
     stock: Optional[int] = None
     unit: Optional[str] = None
     weight: Optional[float] = None
@@ -77,6 +91,9 @@ class ProductUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
     variants: Optional[list[ProductVariant]] = None
     metafields: Optional[dict[str, str]] = None
+    colors: Optional[list[ProductColorSwatch]] = None
+    color_group_id: Optional[str] = None
+    color_sibling_ids: Optional[list[int]] = None
 
 
 class ProductResponse(BaseModel):

@@ -9,7 +9,7 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.common import serialize_shipment, utcnow
+from app.common import format_variant_info_label, serialize_shipment, utcnow
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Order, Shipment
@@ -186,9 +186,11 @@ def _build_push_payload(order: Order, weight_kg: float) -> dict:
 
     products = []
     for item in order.items or []:
+        label = format_variant_info_label(item.variant_info)
+        base = item.name or "Item"
         products.append(
             {
-                "name": (item.name or "Item")[:200],
+                "name": (f"{base} ({label})" if label else base)[:200],
                 "sku_number": str(item.product_id or item.id),
                 "quantity": int(item.quantity),
                 "discount": "",

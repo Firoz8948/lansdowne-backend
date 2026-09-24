@@ -242,6 +242,60 @@ async def connect_db():
         )
         await conn.execute(
             text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS "
+                "colors JSONB DEFAULT '[]'"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE products ADD COLUMN IF NOT EXISTS "
+                "color_group_id VARCHAR(36)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_products_color_group_id "
+                "ON products(color_group_id)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE product_variant_options "
+                "ADD COLUMN IF NOT EXISTS hex VARCHAR(7)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE product_variant_options "
+                "ADD COLUMN IF NOT EXISTS colors JSONB DEFAULT '[]'"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE product_variant_options "
+                "ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE product_variant_options "
+                "ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'"
+            )
+        )
+        # Backfill images from legacy single image_url where empty
+        await conn.execute(
+            text(
+                """
+                UPDATE product_variant_options
+                SET images = jsonb_build_array(image_url)
+                WHERE image_url IS NOT NULL
+                  AND image_url <> ''
+                  AND (images IS NULL OR images = '[]'::jsonb)
+                """
+            )
+        )
+        await conn.execute(
+            text(
                 "ALTER TABLE video_products ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'"
             )
         )
@@ -352,6 +406,37 @@ async def connect_db():
                 FROM categories AS c
                 WHERE p.category_id = c.id
                   AND p.category IS DISTINCT FROM c.name
+                """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS product_categories (
+                    product_id INTEGER NOT NULL
+                        REFERENCES products(id) ON DELETE CASCADE,
+                    category_id INTEGER NOT NULL
+                        REFERENCES categories(id) ON DELETE CASCADE,
+                    PRIMARY KEY (product_id, category_id)
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_product_categories_category_id "
+                "ON product_categories(category_id)"
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                INSERT INTO product_categories (product_id, category_id)
+                SELECT p.id, p.category_id
+                FROM products AS p
+                WHERE p.category_id IS NOT NULL
+                ON CONFLICT DO NOTHING
                 """
             )
         )

@@ -1,10 +1,67 @@
 from datetime import datetime, timezone
+import re
 
 from sqlalchemy import inspect as sa_inspect
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_HEX_RE = re.compile(r"^#?[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$")
+
+
+def _normalize_hex(value: str | None) -> str | None:
+    if not value or not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not _HEX_RE.match(raw):
+        return None
+    if not raw.startswith("#"):
+        raw = f"#{raw}"
+    if len(raw) == 4:
+        raw = "#" + "".join(ch * 2 for ch in raw[1:])
+    return raw.upper()
+
+
+def _normalize_colors(raw) -> list[dict]:
+    """Accept [{name, hex}] or list of hex strings; return clean [{name, hex}]."""
+    if not raw:
+        return []
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                hex_val = _normalize_hex(item.get("hex") or item.get("color"))
+                if not hex_val:
+                    continue
+                name = (item.get("name") or "").strip() or hex_val
+                out.append({"name": name[:80], "hex": hex_val})
+            elif isinstance(item, str):
+                hex_val = _normalize_hex(item)
+                if hex_val:
+                    out.append({"name": hex_val, "hex": hex_val})
+    return out[:6]
+
+
+def serialize_color_sibling(product) -> dict:
+    images = []
+    try:
+        state = sa_inspect(product)
+        if "images" not in state.unloaded:
+            images = [img.url for img in (product.images or [])]
+    except Exception:
+        pass
+    colors = _normalize_colors(getattr(product, "colors", None))
+    return {
+        "id": str(product.id),
+        "slug": product.slug,
+        "name": product.name,
+        "colors": colors,
+        "image": images[0] if images else None,
+        "price": product.price,
+        "mrp": product.mrp,
+    }
 
 
 def serialize_product(product, include_relations=True) -> dict:
@@ -37,12 +94,33 @@ def serialize_product(product, include_relations=True) -> dict:
         "is_featured": product.is_featured,
         "is_active": product.is_active,
         "metafields": product.metafields or {},
+        "colors": _normalize_colors(getattr(product, "colors", None)),
+        "color_group_id": getattr(product, "color_group_id", None),
+        "color_siblings": [],
         "created_at": product.created_at.isoformat() if product.created_at else None,
         "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }
     cat_rel = _loaded("category_rel")
     if cat_rel is not None:
         data["category_slug"] = getattr(cat_rel, "slug", None)
+
+    categories_m2m = _loaded("categories_m2m")
+    if categories_m2m is not None:
+        data["categories"] = [
+            {
+                "id": cat.id,
+                "name": cat.name,
+                "slug": cat.slug,
+            }
+            for cat in categories_m2m
+        ]
+        data["category_ids"] = [cat.id for cat in categories_m2m]
+    else:
+        data["categories"] = []
+        data["category_ids"] = (
+            [product.category_id] if product.category_id else []
+        )
+
     if include_relations:
         images = _loaded("images")
         data["images"] = [img.url for img in (images or [])]
@@ -59,6 +137,24 @@ def serialize_product(product, include_relations=True) -> dict:
                         "mrp": o.mrp,
                         "stock": o.stock,
                         "weight": o.weight,
+                        "hex": getattr(o, "hex", None),
+                        "colors": _normalize_colors(
+                            getattr(o, "colors", None)
+                            or (
+                                [{"name": o.name, "hex": o.hex}]
+                                if getattr(o, "hex", None)
+                                else []
+                            )
+                        ),
+                        "image_url": getattr(o, "image_url", None),
+                        "images": (
+                            list(getattr(o, "images", None) or [])
+                            or (
+                                [o.image_url]
+                                if getattr(o, "image_url", None)
+                                else []
+                            )
+                        ),
                     }
                     for o in (v.options or [])
                 ],
@@ -66,6 +162,32 @@ def serialize_product(product, include_relations=True) -> dict:
             for v in (variants or [])
         ]
     return data
+
+
+def format_variant_info_label(variant_info) -> str:
+    """Build a short label from order line variant_info for display / shipping."""
+    if not isinstance(variant_info, dict) or not variant_info:
+        return ""
+    if variant_info.get("label"):
+        return str(variant_info["label"]).strip()
+    sels = variant_info.get("selections")
+    if isinstance(sels, list) and sels:
+        labeled = []
+        for s in sels:
+            if not isinstance(s, dict):
+                continue
+            v, o = s.get("variant"), s.get("option")
+            if v and o:
+                labeled.append(f"{v}: {o}")
+            elif o:
+                labeled.append(str(o))
+            elif v:
+                labeled.append(str(v))
+        if labeled:
+            return " · ".join(labeled)
+    variant = variant_info.get("variant")
+    option = variant_info.get("option")
+    return " · ".join(p for p in (variant, option) if p)
 
 
 def serialize_order(order) -> dict:

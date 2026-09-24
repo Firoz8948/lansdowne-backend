@@ -2,12 +2,12 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.common import serialize_product
-from app.models import Category, Product, ProductVariant
+from app.models import Category, Product, ProductVariant, product_categories
 
 
 def slugify(name: str) -> str:
@@ -50,11 +50,78 @@ def serialize_category(category: Category, product_count: int = 0) -> dict:
 
 async def _product_counts(db: AsyncSession) -> dict[int, int]:
     rows = await db.execute(
-        select(Product.category_id, func.count(Product.id))
-        .where(Product.category_id.is_not(None))
-        .group_by(Product.category_id)
+        select(
+            product_categories.c.category_id,
+            func.count(product_categories.c.product_id),
+        ).group_by(product_categories.c.category_id)
     )
     return {category_id: count for category_id, count in rows.all()}
+
+
+def _product_in_category_filter(category_id: int):
+    return exists(
+        select(1).where(
+            product_categories.c.product_id == Product.id,
+            product_categories.c.category_id == category_id,
+        )
+    )
+
+
+async def normalize_category_ids(
+    category_ids: list | None,
+    primary_id: int | None = None,
+) -> list[int]:
+    ordered: list[int] = []
+    seen: set[int] = set()
+
+    def _add(raw):
+        if raw is None or raw == "":
+            return
+        try:
+            cid = int(raw)
+        except (TypeError, ValueError):
+            return
+        if cid > 0 and cid not in seen:
+            seen.add(cid)
+            ordered.append(cid)
+
+    _add(primary_id)
+    for raw in category_ids or []:
+        _add(raw)
+    return ordered
+
+
+async def sync_product_categories(
+    db: AsyncSession,
+    product: Product,
+    category_ids: list | None,
+    primary_id: int | None = None,
+) -> dict:
+    """Replace product↔category links; keep primary category_id/name in sync."""
+    ids = await normalize_category_ids(category_ids, primary_id)
+    categories: list[Category] = []
+    if ids:
+        result = await db.execute(select(Category).where(Category.id.in_(ids)))
+        found = {cat.id: cat for cat in result.scalars().all()}
+        categories = [found[cid] for cid in ids if cid in found]
+
+    product.categories_m2m = categories
+
+    primary = None
+    if primary_id and any(c.id == int(primary_id) for c in categories):
+        primary = next(c for c in categories if c.id == int(primary_id))
+    elif categories:
+        primary = categories[0]
+
+    if primary is not None:
+        product.category_id = primary.id
+        product.category = primary.name[:100]
+        return {"category_id": primary.id, "category": primary.name[:100]}
+
+    product.category_id = None
+    if not product.category:
+        product.category = "Uncategorised"
+    return {}
 
 
 async def get_all_categories(
@@ -80,7 +147,7 @@ async def get_category_by_id(
         return None
     count = (
         await db.execute(
-            select(func.count(Product.id)).where(Product.category_id == category_id)
+            select(func.count(Product.id)).where(_product_in_category_filter(category_id))
         )
     ).scalar() or 0
     return serialize_category(category, count)
@@ -99,7 +166,9 @@ async def get_category_by_slug(db: AsyncSession, slug: str) -> Optional[dict]:
         return None
     count = (
         await db.execute(
-            select(func.count(Product.id)).where(Product.category_id == category.id)
+            select(func.count(Product.id)).where(
+                _product_in_category_filter(category.id)
+            )
         )
     ).scalar() or 0
     return serialize_category(category, count)
@@ -218,7 +287,7 @@ async def get_category_products(
     page: int = 1,
     limit: int = 20,
 ) -> dict:
-    filter_by_category = Product.category_id == category_id
+    filter_by_category = _product_in_category_filter(category_id)
     total = (
         await db.execute(select(func.count(Product.id)).where(filter_by_category))
     ).scalar() or 0
@@ -228,6 +297,7 @@ async def get_category_products(
             selectinload(Product.images),
             selectinload(Product.variants).selectinload(ProductVariant.options),
             selectinload(Product.category_rel),
+            selectinload(Product.categories_m2m),
         )
         .where(filter_by_category)
         .order_by(Product.created_at.desc())

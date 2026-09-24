@@ -77,7 +77,7 @@ async def dashboard_stats(
 @router.get("/products")
 async def list_products(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=200),
     category: str | None = None,
     search: str | None = None,
     _=Depends(get_current_admin),
@@ -162,6 +162,32 @@ async def upload_images(
         saved_urls.append(await upload_file(file, "products"))
 
     return await service.add_product_images(db, product_id, saved_urls)
+
+
+@router.post("/products/{product_id}/images/from-urls")
+async def attach_image_urls(
+    product_id: int,
+    body: dict,
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    product = await service.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    urls = body.get("urls") or []
+    if not isinstance(urls, list) or not urls:
+        raise HTTPException(status_code=400, detail="urls list is required")
+    return await service.add_product_images(db, product_id, [str(u) for u in urls if u])
+
+
+@router.get("/media/product-images")
+async def list_product_media(
+    product_id: int | None = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.list_product_media_library(db, product_id=product_id, limit=limit)
 
 
 @router.delete("/products/{product_id}/images")

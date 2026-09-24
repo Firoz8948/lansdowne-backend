@@ -2,13 +2,20 @@ import math
 import re
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.common import serialize_product, utcnow
 from app.database import AsyncSessionLocal
-from app.models import Category, Product, ProductImage, ProductVariant, ProductVariantOption
+from app.models import (
+    Category,
+    Product,
+    ProductImage,
+    ProductVariant,
+    ProductVariantOption,
+    product_categories,
+)
 
 
 def slugify(text: str) -> str:
@@ -62,6 +69,7 @@ async def list_products(
             selectinload(Product.images),
             selectinload(Product.variants).selectinload(ProductVariant.options),
             selectinload(Product.category_rel),
+            selectinload(Product.categories_m2m),
         )
         count_query = select(func.count(Product.id))
 
@@ -75,15 +83,34 @@ async def list_products(
             )
             cat = cat_result.scalar_one_or_none()
             if cat:
-                filt = Product.category_id == cat.id
+                filt = exists(
+                    select(1).where(
+                        product_categories.c.product_id == Product.id,
+                        product_categories.c.category_id == cat.id,
+                    )
+                )
                 query = query.where(filt)
                 count_query = count_query.where(filt)
             else:
                 query = query.where(Product.id == -1)
                 count_query = count_query.where(Product.id == -1)
         elif category:
-            query = query.where(Product.category.ilike(f"%{category}%"))
-            count_query = count_query.where(Product.category.ilike(f"%{category}%"))
+            filt = or_(
+                Product.category.ilike(f"%{category}%"),
+                exists(
+                    select(1)
+                    .select_from(product_categories.join(
+                        Category,
+                        Category.id == product_categories.c.category_id,
+                    ))
+                    .where(
+                        product_categories.c.product_id == Product.id,
+                        Category.name.ilike(f"%{category}%"),
+                    )
+                ),
+            )
+            query = query.where(filt)
+            count_query = count_query.where(filt)
 
         if featured is not None:
             query = query.where(Product.is_featured == featured)
@@ -115,6 +142,9 @@ async def list_products(
             query.order_by(order_col).offset(skip).limit(page_size)
         )
         items = [serialize_product(p) for p in result.scalars().all()]
+        from app.admin.service import attach_color_siblings
+
+        items = await attach_color_siblings(db, items)
         return {
             "items": items,
             "total": total,
@@ -132,13 +162,18 @@ async def get_product_by_slug(slug: str) -> dict:
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
                 selectinload(Product.category_rel),
+                selectinload(Product.categories_m2m),
             )
             .where(Product.slug == slug, Product.is_active == True)  # noqa: E712
         )
         product = result.scalar_one_or_none()
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
-        return serialize_product(product)
+        data = serialize_product(product)
+        from app.admin.service import attach_color_siblings
+
+        await attach_color_siblings(db, [data])
+        return data
 
 
 async def get_product_by_id(product_id: int | str) -> dict:
@@ -149,13 +184,18 @@ async def get_product_by_id(product_id: int | str) -> dict:
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
                 selectinload(Product.category_rel),
+                selectinload(Product.categories_m2m),
             )
             .where(Product.id == int(product_id))
         )
         product = result.scalar_one_or_none()
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
-        return serialize_product(product)
+        data = serialize_product(product)
+        from app.admin.service import attach_color_siblings
+
+        await attach_color_siblings(db, [data])
+        return data
 
 
 async def update_product(product_id: int | str, updates: dict) -> dict:
@@ -166,6 +206,7 @@ async def update_product(product_id: int | str, updates: dict) -> dict:
                 selectinload(Product.images),
                 selectinload(Product.variants).selectinload(ProductVariant.options),
                 selectinload(Product.category_rel),
+                selectinload(Product.categories_m2m),
             )
             .where(Product.id == int(product_id))
         )
