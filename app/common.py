@@ -123,7 +123,13 @@ def serialize_product(product, include_relations=True) -> dict:
 
     if include_relations:
         images = _loaded("images")
-        data["images"] = [img.url for img in (images or [])]
+        data["images"] = [
+            img.url
+            for img in sorted(
+                images or [],
+                key=lambda i: (getattr(i, "position", 0) or 0, getattr(i, "id", 0) or 0),
+            )
+        ]
         variants = _loaded("variants")
         data["variants"] = [
             {

@@ -203,6 +203,22 @@ async def remove_image(
     return updated
 
 
+@router.put("/products/{product_id}/images/reorder")
+async def reorder_images(
+    product_id: int,
+    body: dict,
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    urls = body.get("urls") or []
+    if not isinstance(urls, list):
+        raise HTTPException(status_code=400, detail="urls list is required")
+    updated = await service.reorder_product_images(db, product_id, urls)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return updated
+
+
 @router.get("/orders")
 async def list_orders(
     page: int = Query(1, ge=1),

@@ -599,6 +599,42 @@ async def add_product_images(
     return await get_product_by_id(db, product_id)
 
 
+async def reorder_product_images(
+    db: AsyncSession, product_id: int, urls: list
+) -> dict | None:
+    """Set product image order from an ordered URL list (first = main)."""
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    if not result.scalar_one_or_none():
+        return None
+
+    ordered = [str(u).strip() for u in (urls or []) if u and str(u).strip()]
+    if not ordered:
+        return await get_product_by_id(db, product_id)
+
+    rows = (
+        await db.execute(select(ProductImage).where(ProductImage.product_id == product_id))
+    ).scalars().all()
+    by_url = {r.url: r for r in rows}
+    # Assign positions for listed URLs first
+    used = set()
+    pos = 0
+    for url in ordered:
+        row = by_url.get(url)
+        if not row or url in used:
+            continue
+        row.position = pos
+        used.add(url)
+        pos += 1
+    # Keep any unlisted images after
+    for row in rows:
+        if row.url in used:
+            continue
+        row.position = pos
+        pos += 1
+    await db.commit()
+    return await get_product_by_id(db, product_id)
+
+
 async def list_product_media_library(
     db: AsyncSession,
     product_id: int | None = None,
