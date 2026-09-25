@@ -182,6 +182,9 @@ async def create_payment_order(
             status_code=400, detail="Order total must be at least ₹1.00"
         )
 
+    # Fail early if cart items are already out of stock (before charging).
+    await order_service.assert_stock_available(checkout["items"])
+
     if provider == "payu":
         return await _create_payu_order(checkout, customer, user_id)
     return await _create_razorpay_order(checkout, customer, user_id)

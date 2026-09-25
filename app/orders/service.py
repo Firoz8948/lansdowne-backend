@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -7,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.common import serialize_order, utcnow
 from app.database import AsyncSessionLocal
-from app.models import Order, OrderItem
+from app.models import Order, OrderItem, Product, ProductVariant, ProductVariantOption
 from app.orders.notifications import notify_order_placed
 from app.auth import service as auth_service
 
@@ -15,9 +16,162 @@ from .models import ORDER_STATUSES, calc_subtotal, generate_order_id, normalize_
 
 logger = logging.getLogger("orders")
 
+_COLOR_VARIANT_RE = re.compile(r"colou?r", re.I)
+
 
 def _customer_phone(customer: dict) -> str:
     return customer.get("phone") or customer.get("mobile") or ""
+
+
+def _parse_product_id(raw) -> int | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if text.isdigit():
+        return int(text)
+    return None
+
+
+def _preferred_option_id(variant_info: dict | None) -> int | None:
+    """Pick the stock-bearing option id from checkout variant_info."""
+    if not isinstance(variant_info, dict):
+        return None
+
+    for key in ("option_id", "optionId"):
+        raw = variant_info.get(key)
+        if raw is not None and str(raw).strip().isdigit():
+            return int(str(raw).strip())
+
+    selections = variant_info.get("selections")
+    if not isinstance(selections, list):
+        return None
+
+    color_id = None
+    first_id = None
+    for sel in selections:
+        if not isinstance(sel, dict):
+            continue
+        raw = sel.get("option_id", sel.get("optionId"))
+        if raw is None or not str(raw).strip().isdigit():
+            continue
+        oid = int(str(raw).strip())
+        if first_id is None:
+            first_id = oid
+        variant_name = str(sel.get("variant") or sel.get("variantName") or "")
+        if _COLOR_VARIANT_RE.search(variant_name):
+            color_id = oid
+            break
+    return color_id if color_id is not None else first_id
+
+
+def _match_option_by_names(
+    product: Product, variant_info: dict | None
+) -> ProductVariantOption | None:
+    if not isinstance(variant_info, dict):
+        return None
+    option_name = (variant_info.get("option") or "").strip().lower()
+    variant_name = (variant_info.get("variant") or "").strip().lower()
+    if not option_name:
+        return None
+
+    color_match = None
+    name_match = None
+    for variant in product.variants or []:
+        vname = (variant.name or "").strip().lower()
+        for opt in variant.options or []:
+            if (opt.name or "").strip().lower() != option_name:
+                continue
+            if variant_name and vname == variant_name:
+                return opt
+            if _COLOR_VARIANT_RE.search(variant.name or ""):
+                color_match = color_match or opt
+            name_match = name_match or opt
+    return color_match or name_match
+
+
+async def _apply_stock_for_items(
+    db: AsyncSession, items: list[dict], *, deduct: bool
+) -> None:
+    """Validate (and optionally reduce) product/option stock for order items."""
+    for item in items:
+        pid = _parse_product_id(item.get("product_id"))
+        qty = int(item.get("qty") or 0)
+        if not pid or qty <= 0:
+            continue
+
+        result = await db.execute(
+            select(Product)
+            .options(
+                selectinload(Product.variants).selectinload(ProductVariant.options)
+            )
+            .where(Product.id == pid)
+            .with_for_update()
+        )
+        product = result.scalar_one_or_none()
+        if not product:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Product not found for stock update (id={pid})",
+            )
+
+        variant_info = item.get("variant_info")
+        option: ProductVariantOption | None = None
+        option_id = _preferred_option_id(variant_info)
+        if option_id is not None:
+            for variant in product.variants or []:
+                for opt in variant.options or []:
+                    if opt.id == option_id:
+                        option = opt
+                        break
+                if option:
+                    break
+        if option is None:
+            option = _match_option_by_names(product, variant_info)
+
+        label = item.get("name") or product.name
+        if option is not None:
+            if option.stock < qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for {label} ({option.name})",
+                )
+            if deduct:
+                option.stock -= qty
+                product.stock = max(0, int(product.stock or 0) - qty)
+                logger.info(
+                    "Stock deducted product=%s option=%s qty=%s remaining_option=%s remaining_product=%s",
+                    product.id,
+                    option.id,
+                    qty,
+                    option.stock,
+                    product.stock,
+                )
+        else:
+            if int(product.stock or 0) < qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient stock for {label}",
+                )
+            if deduct:
+                product.stock = int(product.stock or 0) - qty
+                logger.info(
+                    "Stock deducted product=%s qty=%s remaining=%s",
+                    product.id,
+                    qty,
+                    product.stock,
+                )
+
+
+async def _deduct_stock_for_items(db: AsyncSession, items: list[dict]) -> None:
+    await _apply_stock_for_items(db, items, deduct=True)
+
+
+async def assert_stock_available(items: list[dict]) -> None:
+    """Read-only stock check used before starting online payment."""
+    normalized = normalize_items(items)
+    async with AsyncSessionLocal() as db:
+        await _apply_stock_for_items(db, normalized, deduct=False)
+        await db.rollback()
 
 
 async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
@@ -66,6 +220,9 @@ async def create_customer_order(
     async with AsyncSessionLocal() as db:
         from app.promocodes import service as promo_service
         from app.shipping_zones import service as zone_service
+
+        # Lock + reduce stock before creating the order (COD and paid online).
+        await _deduct_stock_for_items(db, normalized)
 
         shipping = await zone_service.resolve_shipping_charge(
             db,
@@ -116,11 +273,10 @@ async def create_customer_order(
         await db.flush()
 
         for item in normalized:
-            pid = item.get("product_id")
             db.add(
                 OrderItem(
                     order_id=order.id,
-                    product_id=int(pid) if pid and str(pid).isdigit() else None,
+                    product_id=_parse_product_id(item.get("product_id")),
                     name=item["name"],
                     price=item["price"],
                     quantity=item["qty"],
