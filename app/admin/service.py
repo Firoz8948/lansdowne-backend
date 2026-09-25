@@ -429,21 +429,8 @@ async def create_product(db: AsyncSession, data: dict) -> dict:
             await db.flush()
             for opt_data in var_data.get("options", []) or []:
                 cleaned = _clean_option_data(opt_data)
-                try:
-                    async with db.begin_nested():
-                        db.add(
-                            ProductVariantOption(variant_id=variant.id, **cleaned)
-                        )
-                        await db.flush()
-                except ProgrammingError as col_err:
-                    # Older DB without `images` JSON column — persist without it
-                    logger.warning(
-                        "Variant option insert failed (%s); retrying without images",
-                        col_err,
-                    )
-                    cleaned.pop("images", None)
-                    db.add(ProductVariantOption(variant_id=variant.id, **cleaned))
-                    await db.flush()
+                db.add(ProductVariantOption(variant_id=variant.id, **cleaned))
+            await db.flush()
 
         await db.commit()
         created = await get_product_by_id(db, product.id)

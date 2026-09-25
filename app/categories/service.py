@@ -98,6 +98,9 @@ async def sync_product_categories(
     primary_id: int | None = None,
 ) -> dict:
     """Replace product↔category links; keep primary category_id/name in sync."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.orm.attributes import set_committed_value
+
     ids = await normalize_category_ids(category_ids, primary_id)
     categories: list[Category] = []
     if ids:
@@ -105,6 +108,10 @@ async def sync_product_categories(
         found = {cat.id: cat for cat in result.scalars().all()}
         categories = [found[cid] for cid in ids if cid in found]
 
+    # Avoid async lazy-load when replacing the M2M collection (MissingGreenlet)
+    state = sa_inspect(product)
+    if "categories_m2m" in state.unloaded:
+        set_committed_value(product, "categories_m2m", [])
     product.categories_m2m = categories
 
     primary = None
