@@ -39,7 +39,7 @@ def _clean_option_data(opt_data: dict) -> dict:
 
     colors = _normalize_colors(opt_data.get("colors"))
     hex_val = _normalize_hex(opt_data.get("hex"))
-    opt_name = (opt_data.get("name") or "").strip()
+    opt_name = (opt_data.get("name") or "").strip()[:100]
     if not colors and hex_val:
         colors = [{"name": (opt_name or hex_val)[:80], "hex": hex_val}]
     if colors and not hex_val:
@@ -56,12 +56,12 @@ def _clean_option_data(opt_data: dict) -> dict:
     if isinstance(raw_images, list):
         for u in raw_images:
             if isinstance(u, str) and u.strip():
-                images.append(u.strip())
+                images.append(u.strip()[:500])
             elif isinstance(u, dict) and u.get("url"):
-                images.append(str(u["url"]).strip())
+                images.append(str(u["url"]).strip()[:500])
     single = opt_data.get("image_url")
     if isinstance(single, str) and single.strip() and single.strip() not in images:
-        images.insert(0, single.strip())
+        images.insert(0, single.strip()[:500])
     # Dedupe preserving order
     seen: set[str] = set()
     deduped: list[str] = []
@@ -71,17 +71,47 @@ def _clean_option_data(opt_data: dict) -> dict:
             deduped.append(u)
     images = deduped[:12]
 
+    # VARCHAR(7) — never pass a longer value
+    if hex_val and len(hex_val) > 7:
+        hex_val = hex_val[:7]
+
     return {
-        "name": opt_data["name"],
-        "price": opt_data["price"],
-        "mrp": opt_data["mrp"],
-        "stock": opt_data.get("stock", 0) or 0,
+        "name": opt_name or "Option",
+        "price": float(opt_data.get("price") or 0),
+        "mrp": float(opt_data.get("mrp") or 0),
+        "stock": int(opt_data.get("stock", 0) or 0),
         "weight": opt_data.get("weight"),
         "hex": hex_val,
         "colors": colors,
         "image_url": images[0] if images else None,
         "images": images,
     }
+
+
+_PRODUCT_WRITE_FIELDS = frozenset(
+    {
+        "name",
+        "description",
+        "price",
+        "mrp",
+        "category_id",
+        "category",
+        "stock",
+        "unit",
+        "weight",
+        "length_cm",
+        "breadth_cm",
+        "height_cm",
+        "is_featured",
+        "is_active",
+        "tags",
+        "metafields",
+        "colors",
+        "color_group_id",
+        "seo_title",
+        "seo_description",
+    }
+)
 
 
 async def attach_color_siblings(db: AsyncSession, products: list[dict]) -> list[dict]:
@@ -341,53 +371,122 @@ async def get_product_by_id(db: AsyncSession, product_id: int) -> dict | None:
 
 
 async def create_product(db: AsyncSession, data: dict) -> dict:
+    from sqlalchemy.exc import IntegrityError, ProgrammingError, SQLAlchemyError
+
     from app.categories import service as category_service
 
-    variants_data = data.pop("variants", []) or []
-    category_ids = data.pop("category_ids", None)
-    category_id = data.pop("category_id", None)
-    data.pop("category", None)
-    sibling_ids = data.pop("color_sibling_ids", None)
-    data.pop("color_group_id", None)
-    data["colors"] = _normalize_colors(data.pop("colors", None))
+    try:
+        variants_data = data.pop("variants", []) or []
+        category_ids = data.pop("category_ids", None)
+        category_id = data.pop("category_id", None)
+        data.pop("category", None)
+        sibling_ids = data.pop("color_sibling_ids", None)
+        data.pop("color_group_id", None)
+        # Drop any non-column leftovers from the request body
+        data.pop("images", None)
+        data.pop("slug", None)
+        data.pop("id", None)
+        data["colors"] = _normalize_colors(data.pop("colors", None))
 
-    ids = await category_service.normalize_category_ids(category_ids, category_id)
-    primary_id = ids[0] if ids else None
-    cat_fields = await category_service.resolve_product_category_fields(db, primary_id)
-    if cat_fields:
-        data.update(cat_fields)
-    elif not data.get("category"):
-        data["category"] = "Uncategorised"
+        ids = await category_service.normalize_category_ids(category_ids, category_id)
+        primary_id = ids[0] if ids else None
+        cat_fields = await category_service.resolve_product_category_fields(
+            db, primary_id
+        )
+        if cat_fields:
+            data.update(cat_fields)
+        elif not data.get("category"):
+            data["category"] = "Uncategorised"
 
-    slug = slugify(data["name"])
-    existing = (
-        await db.execute(select(Product).where(Product.slug == slug))
-    ).scalar_one_or_none()
-    if existing:
-        slug = f"{slug}-{int(datetime.utcnow().timestamp())}"
+        name = (data.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Product name is required")
+        data["name"] = name[:255]
 
-    product = Product(slug=slug, **data)
-    db.add(product)
-    await db.flush()
+        slug = slugify(name)[:280] or f"product-{int(datetime.utcnow().timestamp())}"
+        existing = (
+            await db.execute(select(Product).where(Product.slug == slug))
+        ).scalar_one_or_none()
+        if existing:
+            slug = f"{slug}-{int(datetime.utcnow().timestamp())}"[:300]
 
-    await category_service.sync_product_categories(
-        db, product, ids, primary_id=primary_id
-    )
-    await sync_color_group(db, product, sibling_ids)
-
-    for var_data in variants_data:
-        variant = ProductVariant(product_id=product.id, name=var_data["name"])
-        db.add(variant)
+        product_kwargs = {k: v for k, v in data.items() if k in _PRODUCT_WRITE_FIELDS}
+        product = Product(slug=slug, **product_kwargs)
+        db.add(product)
         await db.flush()
-        for opt_data in var_data.get("options", []):
-            db.add(
-                ProductVariantOption(
-                    variant_id=variant.id, **_clean_option_data(opt_data)
-                )
-            )
 
-    await db.commit()
-    return await get_product_by_id(db, product.id)
+        await category_service.sync_product_categories(
+            db, product, ids, primary_id=primary_id
+        )
+        await sync_color_group(db, product, sibling_ids)
+
+        for var_data in variants_data:
+            var_name = (var_data.get("name") or "").strip()[:100]
+            if not var_name:
+                continue
+            variant = ProductVariant(product_id=product.id, name=var_name)
+            db.add(variant)
+            await db.flush()
+            for opt_data in var_data.get("options", []) or []:
+                cleaned = _clean_option_data(opt_data)
+                try:
+                    async with db.begin_nested():
+                        db.add(
+                            ProductVariantOption(variant_id=variant.id, **cleaned)
+                        )
+                        await db.flush()
+                except ProgrammingError as col_err:
+                    # Older DB without `images` JSON column — persist without it
+                    logger.warning(
+                        "Variant option insert failed (%s); retrying without images",
+                        col_err,
+                    )
+                    cleaned.pop("images", None)
+                    db.add(ProductVariantOption(variant_id=variant.id, **cleaned))
+                    await db.flush()
+
+        await db.commit()
+        created = await get_product_by_id(db, product.id)
+        if not created:
+            raise HTTPException(
+                status_code=500, detail="Product created but could not be reloaded"
+            )
+        return created
+    except HTTPException:
+        await db.rollback()
+        raise
+    except IntegrityError as exc:
+        await db.rollback()
+        logger.exception("Product create integrity error")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not create product (duplicate or invalid data): {exc.orig if getattr(exc, 'orig', None) else exc}",
+        ) from exc
+    except ProgrammingError as exc:
+        await db.rollback()
+        logger.exception("Product create schema error — run DB migrations / restart API")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Database schema is missing a column (often variant option images). "
+                "Restart the API so migrations run, then try again. "
+                f"Details: {exc.orig if getattr(exc, 'orig', None) else exc}"
+            ),
+        ) from exc
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("Product create database error")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error while creating product: {exc}",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Product create failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create product: {exc}",
+        ) from exc
 
 
 async def duplicate_product(db: AsyncSession, product_id: int) -> dict | None:

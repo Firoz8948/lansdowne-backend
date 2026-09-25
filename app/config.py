@@ -111,18 +111,46 @@ class Settings(BaseSettings):
             origin = (origin or "").strip().strip("\"'")
             return origin.rstrip("/")
 
-        origins = {
-            _clean(self.FRONTEND_URL),
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:3001",
-        }
+        def _with_www_variants(origin: str) -> list[str]:
+            cleaned = _clean(origin)
+            if not cleaned:
+                return []
+            out = [cleaned]
+            # Allow both apex and www for the same site
+            try:
+                from urllib.parse import urlparse
+
+                parsed = urlparse(cleaned)
+                host = parsed.hostname or ""
+                if host and not host.startswith("www."):
+                    out.append(
+                        f"{parsed.scheme}://www.{host}"
+                        + (f":{parsed.port}" if parsed.port else "")
+                    )
+                elif host.startswith("www."):
+                    out.append(
+                        f"{parsed.scheme}://{host[4:]}"
+                        + (f":{parsed.port}" if parsed.port else "")
+                    )
+            except Exception:
+                pass
+            return out
+
+        origins: set[str] = set()
+        for o in _with_www_variants(self.FRONTEND_URL):
+            origins.add(o)
+        origins.update(
+            {
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+            }
+        )
         if self.CORS_ORIGINS:
             for origin in self.CORS_ORIGINS.split(","):
-                cleaned = _clean(origin)
-                if cleaned:
-                    origins.add(cleaned)
+                for o in _with_www_variants(origin):
+                    origins.add(o)
         return [origin for origin in origins if origin]
 
 
