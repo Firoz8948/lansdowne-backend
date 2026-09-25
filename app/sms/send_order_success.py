@@ -50,12 +50,20 @@ async def send_order_success_sms(
         except Exception:
             data = {"raw": resp.text}
 
+        logger.info(
+            "Order SMS response oid=%s phone=***%s status=%s body=%s",
+            oid,
+            phone[-4:],
+            resp.status_code,
+            data,
+        )
+
         fail_msg = renflair_failure_message(data)
         if fail_msg:
             logger.error("Renflair order SMS rejected: %s | body=%s", fail_msg, data)
             return {"success": False, "error": fail_msg, "data": data}
 
-        logger.info("Order SMS sent for %s to %s", oid, phone[-4:].rjust(10, "*"))
+        logger.info("Order SMS sent for %s to ***%s", oid, phone[-4:])
         return {"success": True, "data": data}
     except Exception as exc:
         logger.exception("Order SMS error: %s", exc)

@@ -48,10 +48,14 @@ def normalize_items(items: list[dict]) -> list[dict]:
     normalized = []
     for item in items:
         qty = item.get("qty", item.get("quantity", 1))
+        slug = item.get("slug")
+        if slug is not None:
+            slug = str(slug).strip() or None
         normalized.append(
             {
                 "product_id": item.get("product_id"),
                 "name": item["name"],
+                "slug": slug,
                 "price": float(item["price"]),
                 "qty": int(qty),
                 "image": item.get("image"),

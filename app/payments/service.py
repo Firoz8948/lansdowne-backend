@@ -7,6 +7,7 @@ import uuid
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.common import serialize_payment, utcnow
 from app.config import settings
@@ -788,6 +789,7 @@ async def list_payments_paginated(page: int = 1, limit: int = 20) -> dict:
         total = (await db.execute(select(func.count(Payment.id)))).scalar() or 0
         result = await db.execute(
             select(Payment)
+            .options(selectinload(Payment.order))
             .order_by(Payment.created_at.desc())
             .offset((page - 1) * limit)
             .limit(limit)

@@ -254,6 +254,30 @@ def serialize_order(order) -> dict:
 
 
 def serialize_payment(payment) -> dict:
+    customer_name = None
+    customer_phone = None
+
+    # Prefer linked order customer details
+    try:
+        insp = sa_inspect(payment)
+        if "order" not in insp.unloaded and payment.order is not None:
+            customer_name = payment.order.customer_name
+            customer_phone = payment.order.customer_phone
+    except Exception:
+        pass
+
+    # Fall back to checkout snapshot (pre-order / unpaid rows)
+    if not customer_name or not customer_phone:
+        snap = getattr(payment, "checkout_snapshot", None) or {}
+        cust = snap.get("customer") if isinstance(snap, dict) else None
+        if isinstance(cust, dict):
+            customer_name = customer_name or cust.get("name")
+            customer_phone = (
+                customer_phone
+                or cust.get("phone")
+                or cust.get("mobile")
+            )
+
     return {
         "id": str(payment.id),
         "order_db_id": str(payment.order_db_id) if payment.order_db_id else None,
@@ -264,6 +288,10 @@ def serialize_payment(payment) -> dict:
         "currency": payment.currency,
         "status": payment.status,
         "failure_reason": getattr(payment, "failure_reason", None),
+        "customer": {
+            "name": customer_name or None,
+            "phone": customer_phone or None,
+        },
         "created_at": payment.created_at.isoformat() if payment.created_at else None,
         "updated_at": (
             payment.updated_at.isoformat()

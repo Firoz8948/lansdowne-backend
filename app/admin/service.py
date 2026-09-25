@@ -815,6 +815,7 @@ async def get_all_payments(
     total = (await db.execute(select(func.count(Payment.id)))).scalar() or 0
     result = await db.execute(
         select(Payment)
+        .options(selectinload(Payment.order))
         .order_by(Payment.created_at.desc())
         .offset((page - 1) * limit)
         .limit(limit)

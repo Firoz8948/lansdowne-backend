@@ -273,11 +273,17 @@ async def create_customer_order(
         await db.flush()
 
         for item in normalized:
+            pid = _parse_product_id(item.get("product_id"))
+            slug = item.get("slug")
+            if not slug and pid:
+                prod_row = await db.execute(select(Product.slug).where(Product.id == pid))
+                slug = prod_row.scalar_one_or_none()
             db.add(
                 OrderItem(
                     order_id=order.id,
-                    product_id=_parse_product_id(item.get("product_id")),
+                    product_id=pid,
                     name=item["name"],
+                    slug=slug,
                     price=item["price"],
                     quantity=item["qty"],
                     image=item.get("image"),
@@ -379,12 +385,38 @@ async def create_order_from_checkout(
     )
 
 
+async def _enrich_order_item_slugs(db: AsyncSession, orders: list[dict]) -> list[dict]:
+    """Fill missing item.slug from products for older orders."""
+    missing: set[int] = set()
+    for order in orders:
+        for item in order.get("items") or []:
+            if item.get("slug"):
+                continue
+            pid = item.get("product_id")
+            if pid is not None and str(pid).isdigit():
+                missing.add(int(pid))
+    if not missing:
+        return orders
+    result = await db.execute(select(Product.id, Product.slug).where(Product.id.in_(missing)))
+    mapping = {row[0]: row[1] for row in result.all()}
+    for order in orders:
+        for item in order.get("items") or []:
+            if item.get("slug"):
+                continue
+            pid = item.get("product_id")
+            if pid is not None and str(pid).isdigit():
+                item["slug"] = mapping.get(int(pid))
+    return orders
+
+
 async def get_order(order_id: str, is_admin: bool = False) -> dict:
     async with AsyncSessionLocal() as db:
         order = await _load_order(db, order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
-        return serialize_order(order)
+        payload = serialize_order(order)
+        await _enrich_order_item_slugs(db, [payload])
+        return payload
 
 
 async def update_status(order_id: str, status: str) -> dict:
@@ -401,7 +433,9 @@ async def update_status(order_id: str, status: str) -> dict:
         order.updated_at = utcnow()
         await db.commit()
         await db.refresh(order, ["items"])
-        return serialize_order(order)
+        payload = serialize_order(order)
+        await _enrich_order_item_slugs(db, [payload])
+        return payload
 
 
 async def list_user_orders(db: AsyncSession, user_id: int, limit: int = 20) -> list[dict]:
@@ -412,7 +446,8 @@ async def list_user_orders(db: AsyncSession, user_id: int, limit: int = 20) -> l
         .order_by(Order.created_at.desc())
         .limit(limit)
     )
-    return [serialize_order(o) for o in result.scalars().all()]
+    orders = [serialize_order(o) for o in result.scalars().all()]
+    return await _enrich_order_item_slugs(db, orders)
 
 
 async def list_orders_paginated(
@@ -433,6 +468,7 @@ async def list_orders_paginated(
             .limit(limit)
         )
         orders = [serialize_order(o) for o in result.scalars().all()]
+        await _enrich_order_item_slugs(db, orders)
         return {"orders": orders, "total": total, "page": page, "limit": limit}
 
 
