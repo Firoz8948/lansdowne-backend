@@ -74,6 +74,16 @@ async def dashboard_stats(
     return await service.dashboard_stats(db)
 
 
+@router.get("/dashboard/sales")
+async def dashboard_sales(
+    range: str = Query("10d", pattern="^(7d|10d|30d|90d|12m)$"),
+    scope: str = Query("all", pattern="^(all|paid)$"),
+    _=Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await service.sales_trend(db, range_key=range, scope=scope)
+
+
 @router.get("/products")
 async def list_products(
     page: int = Query(1, ge=1),

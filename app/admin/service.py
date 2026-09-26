@@ -1,7 +1,7 @@
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 import bcrypt
 from fastapi import HTTPException
@@ -309,6 +309,116 @@ async def dashboard_stats(db: AsyncSession) -> dict:
         "total_shipped": total_shipped,
         "recent_orders": recent_orders,
         "revenue_trend": revenue_trend,
+    }
+
+
+STORE_TZ_NAME = "Asia/Kolkata"
+# IST has no DST; a fixed offset avoids depending on OS tzdata.
+STORE_TZ = timezone(timedelta(hours=5, minutes=30))
+SALES_DAY_RANGES = {"7d": 7, "10d": 10, "30d": 30, "90d": 90}
+SALES_MONTH_RANGES = {"12m": 12}
+SALES_SCOPES = {"all", "paid"}
+
+
+def _shift_month(d: date, months: int) -> date:
+    idx = d.year * 12 + (d.month - 1) + months
+    return date(idx // 12, idx % 12 + 1, 1)
+
+
+def _sales_buckets(range_key: str) -> tuple[str, list[date], date]:
+    """Return (granularity, bucket start dates, exclusive end date) in store-local time."""
+    today = datetime.now(STORE_TZ).date()
+    if range_key in SALES_MONTH_RANGES:
+        count = SALES_MONTH_RANGES[range_key]
+        this_month = today.replace(day=1)
+        starts = [_shift_month(this_month, -i) for i in range(count - 1, -1, -1)]
+        return "month", starts, _shift_month(this_month, 1)
+    count = SALES_DAY_RANGES.get(range_key, SALES_DAY_RANGES["10d"])
+    starts = [today - timedelta(days=i) for i in range(count - 1, -1, -1)]
+    return "day", starts, today + timedelta(days=1)
+
+
+def _local_midnight_utc(d: date) -> datetime:
+    return datetime.combine(d, time.min, tzinfo=STORE_TZ)
+
+
+def _sales_scope_filter(scope: str):
+    if scope == "paid":
+        return Order.payment_status == "paid"
+    return Order.order_status != "cancelled"
+
+
+async def _sales_totals(db: AsyncSession, start: datetime, end: datetime, scope: str) -> dict:
+    row = (
+        await db.execute(
+            select(func.coalesce(func.sum(Order.total), 0), func.count(Order.id)).where(
+                Order.created_at >= start,
+                Order.created_at < end,
+                _sales_scope_filter(scope),
+            )
+        )
+    ).one()
+    revenue = float(row[0] or 0)
+    orders = int(row[1] or 0)
+    return {
+        "revenue": round(revenue, 2),
+        "orders": orders,
+        "avg_order_value": round(revenue / orders, 2) if orders else 0.0,
+    }
+
+
+async def sales_trend(db: AsyncSession, range_key: str = "10d", scope: str = "all") -> dict:
+    if range_key not in SALES_DAY_RANGES and range_key not in SALES_MONTH_RANGES:
+        range_key = "10d"
+    if scope not in SALES_SCOPES:
+        scope = "all"
+
+    granularity, starts, end_date = _sales_buckets(range_key)
+    start_utc = _local_midnight_utc(starts[0])
+    end_utc = _local_midnight_utc(end_date)
+
+    local_ts = func.timezone(STORE_TZ_NAME, Order.created_at)
+    bucket = func.date_trunc(granularity, local_ts).label("bucket")
+    rows = (
+        await db.execute(
+            select(bucket, func.coalesce(func.sum(Order.total), 0), func.count(Order.id))
+            .where(
+                Order.created_at >= start_utc,
+                Order.created_at < end_utc,
+                _sales_scope_filter(scope),
+            )
+            .group_by(bucket)
+        )
+    ).all()
+    by_bucket = {r[0].date(): (float(r[1] or 0), int(r[2] or 0)) for r in rows}
+
+    points = []
+    for d in starts:
+        revenue, orders = by_bucket.get(d, (0.0, 0))
+        points.append(
+            {
+                "date": d.isoformat(),
+                "label": d.strftime("%b %Y") if granularity == "month" else d.strftime("%d %b"),
+                "revenue": round(revenue, 2),
+                "orders": orders,
+                "avg_order_value": round(revenue / orders, 2) if orders else 0.0,
+            }
+        )
+
+    if granularity == "month":
+        prev_start = _shift_month(starts[0], -len(starts))
+    else:
+        prev_start = starts[0] - timedelta(days=len(starts))
+    totals = await _sales_totals(db, start_utc, end_utc, scope)
+    previous = await _sales_totals(db, _local_midnight_utc(prev_start), start_utc, scope)
+
+    return {
+        "range": range_key,
+        "scope": scope,
+        "granularity": granularity,
+        "points": points,
+        "totals": totals,
+        "previous": previous,
     }
 
 
