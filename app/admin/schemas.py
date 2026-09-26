@@ -71,6 +71,8 @@ class ProductCreateRequest(BaseModel):
     colors: Optional[list[ProductColorSwatch]] = None
     color_group_id: Optional[str] = None
     color_sibling_ids: Optional[list[int]] = None
+    seo_title: Optional[str] = Field(default=None, max_length=200)
+    seo_description: Optional[str] = Field(default=None, max_length=320)
 
 
 class ProductUpdateRequest(BaseModel):
@@ -94,6 +96,8 @@ class ProductUpdateRequest(BaseModel):
     colors: Optional[list[ProductColorSwatch]] = None
     color_group_id: Optional[str] = None
     color_sibling_ids: Optional[list[int]] = None
+    seo_title: Optional[str] = Field(default=None, max_length=200)
+    seo_description: Optional[str] = Field(default=None, max_length=320)
 
 
 class ProductResponse(BaseModel):

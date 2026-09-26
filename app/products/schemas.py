@@ -92,6 +92,9 @@ class ProductResponse(ProductBase):
     category_ids: list[int] = []
     categories: list[dict] = []
     color_siblings: list[ColorSibling] = []
+    seo_title: str | None = ""
+    seo_description: str | None = ""
+    updated_at: str | None = None
     length_cm: float | None = None
     breadth_cm: float | None = None
     height_cm: float | None = None

@@ -97,6 +97,8 @@ def serialize_product(product, include_relations=True) -> dict:
         "colors": _normalize_colors(getattr(product, "colors", None)),
         "color_group_id": getattr(product, "color_group_id", None),
         "color_siblings": [],
+        "seo_title": getattr(product, "seo_title", None) or "",
+        "seo_description": getattr(product, "seo_description", None) or "",
         "created_at": product.created_at.isoformat() if product.created_at else None,
         "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }
